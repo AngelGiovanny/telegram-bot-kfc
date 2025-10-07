@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  kfc-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-kfc-bot
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    environment:
+      - PYTHONPATH=/app
