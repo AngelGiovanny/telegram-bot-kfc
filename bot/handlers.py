@@ -2,6 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filters
 from datetime import datetime, timedelta
 import re
+import os
 
 # Importaciones absolutas
 from bot.database import DatabaseManager
@@ -362,6 +363,7 @@ Todos los datos han sido descartados.
 🤖 **Bot de Consultas KFC - Comandos Disponibles**
 
 /start - Iniciar una nueva consulta
+/reportes - Generar reportes de conexiones
 /help - Mostrar esta ayuda
 /cancel - Cancelar la consulta actual
 
@@ -371,12 +373,169 @@ Todos los datos han sido descartados.
 3. 🔢 Ingresa referencia (opcional)
 4. ✅ Ingresa autorización (opcional)
 
-📋 **Características:**
-- ↩️ Puedes volver atrás en cualquier momento
-- ❌ Puedes finalizar la consulta cuando quieras
-- 📊 Resultados detallados con ID de transacción
-- 📝 Logs automáticos de todas las consultas
+📊 **Sistema de Reportes:**
+- Genera reportes CSV con todas las conexiones
+- Estadísticas por local y fecha
+- Datos de consultas realizadas
 
 🔧 **Soporte:** Si tienes problemas, contacta al administrador.
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
+
+    # ========== MÉTODOS DE REPORTES ==========
+
+    async def reportes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja el comando /reportes"""
+        print(f"🔍 Comando /reportes recibido de usuario: {update.effective_user.id}")
+
+        from utils.report_generator import report_generator
+
+        # Crear teclado para selección de tipo de reporte
+        keyboard = [
+            [KeyboardButton("📊 Reporte CSV"), KeyboardButton("📈 Reporte Detallado")],
+            [KeyboardButton("❌ Cancelar")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(
+            "📊 **Sistema de Reportes**\n\n"
+            "Selecciona el tipo de reporte que deseas generar:\n\n"
+            "• 📊 **Reporte CSV**: Archivo CSV con todos los datos de conexiones\n"
+            "• 📈 **Reporte Detallado**: Archivo de texto con estadísticas y análisis\n",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+
+        context.user_data['reporte_pendiente'] = True
+        print("✅ Estado cambiado a: WAITING_REPORT_TYPE")
+        return "WAITING_REPORT_TYPE"
+
+    async def handle_report_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja la selección de tipo de reporte"""
+        print(f"🔍 Tipo de reporte seleccionado: {update.message.text}")
+
+        from utils.report_generator import report_generator
+
+        user_input = update.message.text
+
+        if user_input == "❌ Cancelar":
+            await update.message.reply_text(
+                "❌ Generación de reporte cancelada.",
+                reply_markup=self._create_base_keyboard(include_back=False, include_cancel=False)
+            )
+            return ConversationHandler.END
+
+        # Guardar tipo de reporte
+        context.user_data['tipo_reporte'] = user_input
+
+        # Obtener locales disponibles
+        locales = report_generator.get_available_locals()
+
+        if not locales:
+            await update.message.reply_text(
+                "📊 **Sistema de Reportes**\n\n"
+                "❌ No hay datos de conexiones registrados todavía.\n\n"
+                "Los reportes se generan automáticamente cuando los usuarios "
+                "realizan consultas con /start",
+                parse_mode='Markdown',
+                reply_markup=self._create_base_keyboard(include_back=False, include_cancel=False)
+            )
+            return ConversationHandler.END
+
+        # Crear teclado para selección de local
+        keyboard = []
+        row = []
+        for i, local in enumerate(locales):
+            row.append(KeyboardButton(local))
+            if len(row) == 2 or i == len(locales) - 1:
+                keyboard.append(row)
+                row = []
+
+        keyboard.append([KeyboardButton("🏪 Todos los locales")])
+        keyboard.append([KeyboardButton("↩️ Volver"), KeyboardButton("❌ Cancelar")])
+
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(
+            f"📊 **{user_input}**\n\n"
+            "Selecciona el local para el reporte:\n\n"
+            f"📍 **Locales disponibles:** {len(locales)}",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+
+        return "WAITING_REPORT_LOCAL"
+
+    async def handle_report_local(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja la selección de local para reporte"""
+        print(f"🔍 Local seleccionado para reporte: {update.message.text}")
+
+        from utils.report_generator import report_generator
+
+        user_input = update.message.text
+
+        if user_input == "❌ Cancelar":
+            await update.message.reply_text(
+                "❌ Generación de reporte cancelada.",
+                reply_markup=self._create_base_keyboard(include_back=False, include_cancel=False)
+            )
+            return ConversationHandler.END
+
+        if user_input == "↩️ Volver":
+            await self.reportes_command(update, context)
+            return "WAITING_REPORT_TYPE"
+
+        # Determinar el filtro de local
+        local_filter = None if user_input == "🏪 Todos los locales" else user_input
+        tipo_reporte = context.user_data.get('tipo_reporte', '📊 Reporte CSV')
+
+        await update.message.reply_text(
+            f"⏳ **Generando {tipo_reporte}...**\n\n"
+            f"🔍 **Local:** {user_input}\n"
+            "Por favor espera mientras se procesan los datos...",
+            parse_mode='Markdown'
+        )
+
+        # Generar reporte según el tipo
+        if tipo_reporte == "📊 Reporte CSV":
+            filepath, message = report_generator.generate_connections_report(local_filter=local_filter)
+            file_type = "document"
+        else:  # Reporte Detallado
+            filepath, message = report_generator.generate_detailed_report(local_filter=local_filter)
+            file_type = "document"
+
+        if filepath:
+            # Enviar archivo
+            with open(filepath, 'rb') as file:
+                if file_type == "document":
+                    await update.message.reply_document(
+                        document=file,
+                        filename=os.path.basename(filepath),
+                        caption=message,
+                        parse_mode='Markdown'
+                    )
+
+            # Limpiar archivo temporal después de enviar
+            try:
+                os.remove(filepath)
+            except:
+                pass
+
+            # Mensaje adicional
+            await update.message.reply_text(
+                "✅ **Reporte completado**\n\n"
+                "¿Necesitas otro reporte? Usa /reportes nuevamente.",
+                parse_mode='Markdown',
+                reply_markup=self._create_base_keyboard(include_back=False, include_cancel=False)
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ **Error al generar reporte**\n\n{message}",
+                parse_mode='Markdown'
+            )
+
+        # Limpiar datos temporales
+        context.user_data.pop('reporte_pendiente', None)
+        context.user_data.pop('tipo_reporte', None)
+
+        return ConversationHandler.END

@@ -14,8 +14,20 @@ class KFCBot:
 
         self.setup_handlers()
 
+    async def post_init(self, application):
+        """Configura los comandos del bot en Telegram"""
+        await application.bot.set_my_commands([
+            ("start", "Iniciar consulta de transacciones"),
+            ("reportes", "Generar reportes de conexiones"),
+            ("help", "Mostrar ayuda"),
+            ("cancel", "Cancelar operación actual")
+        ])
+
     def setup_handlers(self):
         """Configura los manejadores de comandos"""
+        print("🔧 Configurando handlers...")
+
+        # Conversation handler para consultas principales
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('start', self.handlers.start)],
             states={
@@ -34,16 +46,40 @@ class KFCBot:
         )
 
         self.application.add_handler(conv_handler)
+        print("✅ Handler de consultas principal configurado")
 
-        # Comando de ayuda
+        # Conversation handler para reportes
+        report_conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('reportes', self.handlers.reportes_command)],
+            states={
+                "WAITING_REPORT_TYPE": [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.handle_report_type)
+                ],
+                "WAITING_REPORT_LOCAL": [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.handle_report_local)
+                ],
+            },
+            fallbacks=[CommandHandler('cancel', self.handlers.cancel)]
+        )
+
+        self.application.add_handler(report_conv_handler)
+        print("✅ Handler de reportes configurado")
+
+        # Comandos simples
         self.application.add_handler(CommandHandler('help', self.handlers.help_command))
         self.application.add_handler(CommandHandler('cancel', self.handlers.cancel))
+        print("✅ Comandos simples configurados")
+
+        # Debug: listar todos los handlers
+        print(f"📋 Total de handlers registrados: {len(self.application.handlers)}")
+
+
 
     def run(self):
         """Inicia el bot"""
         logger.logger.info("Iniciando bot de KFC...")
         print("🤖 Bot de KFC iniciado...")
-        print("✅ Botones de navegación activados: ↩️ Volver atrás, ❌ Finalizar consulta")
+        print("✅ Comandos disponibles: /start, /reportes, /help, /cancel")
 
         self.application.run_polling()
 
