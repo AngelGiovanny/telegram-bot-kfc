@@ -77,9 +77,14 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         """PRIMERO: Siempre pedir local"""
         user_input = update.message.text.strip()
 
-        # Manejar botones de navegación
+        # Manejar botones de navegación PRIMERO
         if user_input == "❌ Finalizar consulta":
             return await self.cancel(update, context)
+
+        if user_input == "↩️ Volver atrás":
+            # Volver al inicio
+            await self.start(update, context)
+            return LOCAL
 
         local = user_input.upper().strip()
 
@@ -103,10 +108,10 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         return FECHA
 
     async def get_fecha(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """SEGUNDO: Siempre pedir fecha"""
+        """SEGUNDO: Siempre pedir fecha - CORREGIDO"""
         fecha_input = update.message.text
 
-        # Manejar botones de navegación
+        # Manejar botones de navegación PRIMERO
         if fecha_input == "↩️ Volver atrás":
             await update.message.reply_text(
                 "↩️ Volviendo al ingreso de local...\n\n"
@@ -132,6 +137,16 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
             fecha_display = fecha.strftime("%d/%m/%Y")
             context.user_data['fecha'] = fecha_str
             context.user_data['fecha_display'] = fecha_display
+
+            # Pasar directamente a autorización
+            await update.message.reply_text(
+                f"📅 **Fecha seleccionada:** {fecha_display}\n\n"
+                "✅ ¿Tienes un **número de autorización**?",
+                parse_mode='Markdown',
+                reply_markup=self._create_autorizacion_keyboard()
+            )
+            return AUTORIZACION
+
         elif fecha_input == "📅 Ingresar fecha manual":
             await update.message.reply_text(
                 "📅 Por favor ingresa la fecha en formato **DD/MM/AAAA**\n"
@@ -140,6 +155,7 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
                 reply_markup=self._create_base_keyboard()
             )
             return FECHA
+
         else:
             # Intentar parsear fecha manual
             try:
@@ -148,6 +164,16 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
                 fecha_display = fecha_dt.strftime("%d/%m/%Y")
                 context.user_data['fecha'] = fecha_str
                 context.user_data['fecha_display'] = fecha_display
+
+                # Pasar a autorización después de fecha manual
+                await update.message.reply_text(
+                    f"📅 **Fecha seleccionada:** {fecha_display}\n\n"
+                    "✅ ¿Tienes un **número de autorización**?",
+                    parse_mode='Markdown',
+                    reply_markup=self._create_autorizacion_keyboard()
+                )
+                return AUTORIZACION
+
             except ValueError:
                 await update.message.reply_text(
                     "❌ Formato de fecha incorrecto. Usa **DD/MM/AAAA** (ejemplo: 27/08/2024)\n\n"
@@ -157,20 +183,11 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
                 )
                 return FECHA
 
-        # TERCERO: Preguntar por autorización
-        await update.message.reply_text(
-            f"📅 **Fecha seleccionada:** {context.user_data['fecha_display']}\n\n"
-            "✅ ¿Tienes un **número de autorización**?",
-            parse_mode='Markdown',
-            reply_markup=self._create_autorizacion_keyboard()
-        )
-        return AUTORIZACION
-
     async def get_autorizacion(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """TERCERO: Preguntar por autorización"""
+        """TERCERO: Preguntar por autorización - CORREGIDO"""
         user_input = update.message.text.strip()
 
-        # Manejar botones de navegación
+        # Manejar botones de navegación PRIMERO
         if user_input == "↩️ Volver atrás":
             await update.message.reply_text(
                 f"↩️ Volviendo a selección de fecha...\n\n"
@@ -208,13 +225,29 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         # Si ingresa un número (autorización válida)
         if user_input.isdigit():
             context.user_data['autorizacion'] = user_input
-            # CON AUTORIZACIÓN: Ejecutar consulta directa
+
+            # Mostrar resumen y ejecutar consulta CON AUTORIZACIÓN
+            resumen = f"""
+📋 **Resumen de tu consulta:**
+
+🏪 **Local:** {context.user_data['local']}
+📅 **Fecha:** {context.user_data['fecha_display']}
+🔢 **Referencia:** No especificada
+✅ **Autorización:** {user_input}
+
+🔍 **Procesando consulta...**
+            """
+
             await update.message.reply_text(
-                f"✅ **Autorización registrada:** {user_input}\n\n"
-                "🔍 **Consultando con autorización...**",
-                parse_mode='Markdown'
+                resumen,
+                parse_mode='Markdown',
+                reply_markup=self._create_base_keyboard(include_back=True, include_cancel=False)
             )
-            return await self.execute_query(update, context)
+
+            # Realizar consulta con autorización
+            await self.execute_query(update, context)
+            return ConversationHandler.END
+
         else:
             await update.message.reply_text(
                 "❌ Por favor ingresa un número de autorización válido o selecciona una opción:",
@@ -223,10 +256,10 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
             return AUTORIZACION
 
     async def get_referencia(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """CUARTO: Pedir referencia solo si NO hay autorización"""
+        """CUARTO: Pedir referencia solo si NO hay autorización - CORREGIDO"""
         user_input = update.message.text.strip()
 
-        # Manejar botones de navegación
+        # Manejar botones de navegación PRIMERO
         if user_input == "↩️ Volver atrás":
             await update.message.reply_text(
                 f"↩️ Volviendo a autorización...\n\n"
@@ -319,7 +352,8 @@ No se pudo completar la consulta. Error: {str(e)}
             )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Cancela la conversación"""
+        """Cancela la conversación - CORREGIDO"""
+        # Limpiar datos
         context.user_data.clear()
 
         cancel_message = """
@@ -363,7 +397,8 @@ Todos los datos han sido descartados.
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
-    # ... (Los métodos de reportes se mantienen igual)
+    # ========== MÉTODOS DE REPORTES ==========
+
     async def reportes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Maneja el comando /reportes"""
         print(f"🔍 Comando /reportes recibido de usuario: {update.effective_user.id}")
@@ -479,21 +514,18 @@ Todos los datos han sido descartados.
         # Generar reporte según el tipo
         if tipo_reporte == "📊 Reporte CSV":
             filepath, message = report_generator.generate_connections_report(local_filter=local_filter)
-            file_type = "document"
         else:  # Reporte Detallado
             filepath, message = report_generator.generate_detailed_report(local_filter=local_filter)
-            file_type = "document"
 
         if filepath:
             # Enviar archivo
             with open(filepath, 'rb') as file:
-                if file_type == "document":
-                    await update.message.reply_document(
-                        document=file,
-                        filename=os.path.basename(filepath),
-                        caption=message,
-                        parse_mode='Markdown'
-                    )
+                await update.message.reply_document(
+                    document=file,
+                    filename=os.path.basename(filepath),
+                    caption=message,
+                    parse_mode='Markdown'
+                )
 
             # Limpiar archivo temporal después de enviar
             try:
