@@ -1,0 +1,7 @@
+ID_Conexion,Local,Fecha_Consulta,Fecha_Solicitud,Hora_Solicitud,Usuario,Estado
+db7fd641-779f-416f-9181-e1f8b34c8f59,KFC004,20251006,2025-11-06,11:17:10,telegram_user,attempt
+db7fd641-779f-416f-9181-e1f8b34c8f59,KFC004,20251006,2025-11-06,11:17:11,telegram_user,success
+c081c612-b169-4601-9c33-020caf0dba68,KFC004,20251006,2025-11-06,11:32:33,telegram_user,attempt
+c081c612-b169-4601-9c33-020caf0dba68,KFC004,20251006,2025-11-06,11:32:34,telegram_user,success
+7e302ed3-d162-4b96-b554-b94ee76c94de,KFC004,20251006,2025-11-06,11:33:52,telegram_user,attempt
+7e302ed3-d162-4b96-b554-b94ee76c94de,KFC004,20251006,2025-11-06,11:33:53,telegram_user,success

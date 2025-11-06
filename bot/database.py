@@ -2,7 +2,7 @@ import pyodbc
 import uuid
 from datetime import datetime
 
-# Importaciones corregidas
+# Importaciones absolutas
 from config.settings import Config
 from utils.logger import logger
 
@@ -111,7 +111,7 @@ class DatabaseManager:
             raise e
 
     def format_results(self, results):
-        """Formatea los resultados para una respuesta amigable"""
+        """Formatea los resultados para una respuesta amigable y optimizada"""
         if not results:
             return "❌ No se encontraron transacciones con los criterios especificados."
 
@@ -119,15 +119,18 @@ class DatabaseManager:
         for row in results:
             codigo_comercio, tid_red, fecha, estado, referencia, autorizacion, valor = row
 
+            # Formato optimizado - Estado en grande y destacado, sin título
             formatted_result = f"""
+🎯 **{estado.upper()}**
+
+📋 **Detalles de la transacción:**
 🏪 **Local:** {codigo_comercio}
 🆔 **TID:** {tid_red}
 📅 **Fecha:** {fecha}
-📊 **Estado:** {estado}
 🔢 **Referencia:** {referencia}
 ✅ **Autorización:** {autorizacion}
 💰 **Valor:** ${float(valor) if valor else 0:,.2f}
-{'-' * 30}
+{'─' * 30}
             """
             formatted_results.append(formatted_result)
 

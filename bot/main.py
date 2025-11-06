@@ -2,7 +2,7 @@ from telegram.ext import Application, CommandHandler, ConversationHandler, Messa
 
 # Importaciones absolutas
 from config.settings import Config
-from bot.handlers import BotHandlers, LOCAL, FECHA, REFERENCIA, AUTORIZACION
+from bot.handlers import BotHandlers, LOCAL, FECHA, AUTORIZACION, REFERENCIA
 from utils.logger import logger
 
 
@@ -14,33 +14,18 @@ class KFCBot:
 
         self.setup_handlers()
 
-    async def post_init(self, application):
-        """Configura los comandos del bot en Telegram"""
-        await application.bot.set_my_commands([
-            ("start", "Iniciar consulta de transacciones"),
-            ("reportes", "Generar reportes de conexiones"),
-            ("help", "Mostrar ayuda"),
-            ("cancel", "Cancelar operación actual")
-        ])
-
     def setup_handlers(self):
         """Configura los manejadores de comandos"""
         print("🔧 Configurando handlers...")
 
-        # Conversation handler para consultas principales
+        # Conversation handler para consultas principales (FLUJO CORREGIDO)
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('start', self.handlers.start)],
             states={
                 LOCAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_local)],
                 FECHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_fecha)],
-                REFERENCIA: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_referencia),
-                    CommandHandler('skip', self.handlers.skip_referencia)
-                ],
-                AUTORIZACION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_autorizacion),
-                    CommandHandler('skip', self.handlers.skip_autorizacion)
-                ],
+                AUTORIZACION: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_autorizacion)],
+                REFERENCIA: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.get_referencia)],
             },
             fallbacks=[CommandHandler('cancel', self.handlers.cancel)]
         )
@@ -73,13 +58,12 @@ class KFCBot:
         # Debug: listar todos los handlers
         print(f"📋 Total de handlers registrados: {len(self.application.handlers)}")
 
-
-
     def run(self):
         """Inicia el bot"""
         logger.logger.info("Iniciando bot de KFC...")
         print("🤖 Bot de KFC iniciado...")
         print("✅ Comandos disponibles: /start, /reportes, /help, /cancel")
+        print("🔄 Nuevo flujo: Local → Fecha → Autorización → (Referencia si es necesario)")
 
         self.application.run_polling()
 

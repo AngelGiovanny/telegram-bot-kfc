@@ -9,7 +9,7 @@ from bot.database import DatabaseManager
 from utils.logger import logger
 
 # Estados de la conversación
-LOCAL, FECHA, REFERENCIA, AUTORIZACION = range(4)
+LOCAL, FECHA, AUTORIZACION, REFERENCIA = range(4)
 
 
 class BotHandlers:
@@ -36,17 +36,25 @@ class BotHandlers:
         ]
         return ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
-    def _create_optional_keyboard(self):
-        """Crea teclado para campos opcionales"""
+    def _create_autorizacion_keyboard(self):
+        """Crea teclado específico para autorización"""
         keyboard = [
-            [KeyboardButton("No tengo")],
+            [KeyboardButton("✅ Sí, tengo autorización"), KeyboardButton("❌ No tengo autorización")],
+            [KeyboardButton("↩️ Volver atrás"), KeyboardButton("❌ Finalizar consulta")]
+        ]
+        return ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    def _create_referencia_keyboard(self):
+        """Crea teclado para referencia"""
+        keyboard = [
+            [KeyboardButton("No tengo referencia")],
             [KeyboardButton("↩️ Volver atrás")],
             [KeyboardButton("❌ Finalizar consulta")]
         ]
         return ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Mensaje de bienvenida"""
+        """Mensaje de bienvenida - Siempre empieza con local"""
         # Limpiar datos previos
         context.user_data.clear()
 
@@ -66,7 +74,7 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         return LOCAL
 
     async def get_local(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Recibe el número de local"""
+        """PRIMERO: Siempre pedir local"""
         user_input = update.message.text.strip()
 
         # Manejar botones de navegación
@@ -95,7 +103,7 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         return FECHA
 
     async def get_fecha(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Recibe la fecha de la transacción"""
+        """SEGUNDO: Siempre pedir fecha"""
         fecha_input = update.message.text
 
         # Manejar botones de navegación
@@ -149,17 +157,17 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
                 )
                 return FECHA
 
+        # TERCERO: Preguntar por autorización
         await update.message.reply_text(
             f"📅 **Fecha seleccionada:** {context.user_data['fecha_display']}\n\n"
-            "🔢 ¿Tienes un **número de referencia**? (Opcional)\n\n"
-            "Si no tienes, presiona 'No tengo'",
+            "✅ ¿Tienes un **número de autorización**?",
             parse_mode='Markdown',
-            reply_markup=self._create_optional_keyboard()
+            reply_markup=self._create_autorizacion_keyboard()
         )
-        return REFERENCIA
+        return AUTORIZACION
 
-    async def get_referencia(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Recibe el número de referencia (opcional)"""
+    async def get_autorizacion(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """TERCERO: Preguntar por autorización"""
         user_input = update.message.text.strip()
 
         # Manejar botones de navegación
@@ -175,7 +183,65 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
         if user_input == "❌ Finalizar consulta":
             return await self.cancel(update, context)
 
-        if user_input == "No tengo":
+        if user_input == "✅ Sí, tengo autorización":
+            await update.message.reply_text(
+                "🔢 **Por favor ingresa el número de autorización:**",
+                parse_mode='Markdown',
+                reply_markup=self._create_base_keyboard(include_back=True)
+            )
+            return AUTORIZACION
+
+        if user_input == "❌ No tengo autorización":
+            context.user_data['autorizacion'] = None
+            # SIN AUTORIZACIÓN: Pedir referencia
+            await update.message.reply_text(
+                f"🔍 **Consulta sin autorización**\n\n"
+                f"🏪 Local: {context.user_data['local']}\n"
+                f"📅 Fecha: {context.user_data['fecha_display']}\n\n"
+                "🔢 ¿Tienes un **número de referencia**?\n\n"
+                "Si no tienes, presiona 'No tengo referencia'",
+                parse_mode='Markdown',
+                reply_markup=self._create_referencia_keyboard()
+            )
+            return REFERENCIA
+
+        # Si ingresa un número (autorización válida)
+        if user_input.isdigit():
+            context.user_data['autorizacion'] = user_input
+            # CON AUTORIZACIÓN: Ejecutar consulta directa
+            await update.message.reply_text(
+                f"✅ **Autorización registrada:** {user_input}\n\n"
+                "🔍 **Consultando con autorización...**",
+                parse_mode='Markdown'
+            )
+            return await self.execute_query(update, context)
+        else:
+            await update.message.reply_text(
+                "❌ Por favor ingresa un número de autorización válido o selecciona una opción:",
+                reply_markup=self._create_autorizacion_keyboard()
+            )
+            return AUTORIZACION
+
+    async def get_referencia(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """CUARTO: Pedir referencia solo si NO hay autorización"""
+        user_input = update.message.text.strip()
+
+        # Manejar botones de navegación
+        if user_input == "↩️ Volver atrás":
+            await update.message.reply_text(
+                f"↩️ Volviendo a autorización...\n\n"
+                f"🏪 Local: {context.user_data['local']}\n"
+                f"📅 Fecha: {context.user_data['fecha_display']}\n\n"
+                "✅ ¿Tienes un **número de autorización**?",
+                parse_mode='Markdown',
+                reply_markup=self._create_autorizacion_keyboard()
+            )
+            return AUTORIZACION
+
+        if user_input == "❌ Finalizar consulta":
+            return await self.cancel(update, context)
+
+        if user_input == "No tengo referencia":
             referencia = None
             referencia_msg = "No especificada"
         else:
@@ -184,89 +250,13 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
 
         context.user_data['referencia'] = referencia
 
-        await update.message.reply_text(
-            f"🔢 **Referencia:** {referencia_msg}\n\n"
-            "✅ ¿Tienes un **número de autorización**? (Opcional)\n\n"
-            "Si no tienes, presiona 'No tengo'",
-            parse_mode='Markdown',
-            reply_markup=self._create_optional_keyboard()
-        )
-        return AUTORIZACION
-
-    async def get_autorizacion(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Recibe el número de autorización (opcional)"""
-        user_input = update.message.text.strip()
-
-        # Manejar botones de navegación
-        if user_input == "↩️ Volver atrás":
-            await update.message.reply_text(
-                f"↩️ Volviendo a ingreso de referencia...\n\n"
-                f"🏪 Local: {context.user_data['local']}\n"
-                f"📅 Fecha: {context.user_data['fecha_display']}\n\n"
-                "🔢 ¿Tienes un número de referencia? (Opcional)\n\n"
-                "Si no tienes, presiona 'No tengo'",
-                reply_markup=self._create_optional_keyboard()
-            )
-            return REFERENCIA
-
-        if user_input == "❌ Finalizar consulta":
-            return await self.cancel(update, context)
-
-        if user_input == "No tengo":
-            autorizacion = None
-            autorizacion_msg = "No especificada"
-        else:
-            autorizacion = user_input
-            autorizacion_msg = autorizacion
-
-        context.user_data['autorizacion'] = autorizacion
-
-        # Mostrar resumen antes de ejecutar
+        # Mostrar resumen y ejecutar consulta CON REFERENCIA (sin autorización)
         resumen = f"""
 📋 **Resumen de tu consulta:**
 
 🏪 **Local:** {context.user_data['local']}
 📅 **Fecha:** {context.user_data['fecha_display']}
-🔢 **Referencia:** {context.user_data.get('referencia', 'No especificada')}
-✅ **Autorización:** {autorizacion_msg}
-
-🔍 **Procesando consulta...**
-        """
-
-        await update.message.reply_text(
-            resumen,
-            parse_mode='Markdown',
-            reply_markup=self._create_base_keyboard(include_back=True, include_cancel=False)
-        )
-
-        # Realizar consulta
-        await self.execute_query(update, context)
-        return ConversationHandler.END
-
-    async def skip_referencia(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Salta el ingreso de referencia (comando /skip)"""
-        context.user_data['referencia'] = None
-
-        await update.message.reply_text(
-            "🔢 Referencia: No especificada\n\n"
-            "✅ ¿Tienes un **número de autorización**? (Opcional)\n\n"
-            "Si no tienes, presiona 'No tengo'",
-            parse_mode='Markdown',
-            reply_markup=self._create_optional_keyboard()
-        )
-        return AUTORIZACION
-
-    async def skip_autorizacion(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Salta el ingreso de autorización (comando /skip)"""
-        context.user_data['autorizacion'] = None
-
-        # Mostrar resumen antes de ejecutar
-        resumen = f"""
-📋 **Resumen de tu consulta:**
-
-🏪 **Local:** {context.user_data['local']}
-📅 **Fecha:** {context.user_data['fecha_display']}
-🔢 **Referencia:** {context.user_data.get('referencia', 'No especificada')}
+🔢 **Referencia:** {referencia_msg}
 ✅ **Autorización:** No especificada
 
 🔍 **Procesando consulta...**
@@ -278,6 +268,7 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
             reply_markup=self._create_base_keyboard(include_back=True, include_cancel=False)
         )
 
+        # Realizar consulta con referencia (sin autorización)
         await self.execute_query(update, context)
         return ConversationHandler.END
 
@@ -295,19 +286,11 @@ Por favor, ingresa el número de local (ejemplo: kfc004):
 
             formatted_results = self.db.format_results(results)
 
-            # Agregar información de la consulta
+            # Respuesta optimizada - Sin ID de conexión visible
             response = f"""
-📊 **Resultados de la Consulta**
-
-🔗 **ID de Conexión:** `{connection_id}`
-🏪 **Local:** {user_data['local']}
-📅 **Fecha:** {user_data['fecha_display']}
-🔢 **Referencia:** {user_data.get('referencia', 'No especificada')}
-✅ **Autorización:** {user_data.get('autorizacion', 'No especificada')}
-
 {formatted_results}
 
-🔄 ¿Quieres hacer otra consulta? Usa /start
+🔄 **¿Nueva consulta?** Usa /start
             """
 
             await update.message.reply_text(
@@ -337,7 +320,6 @@ No se pudo completar la consulta. Error: {str(e)}
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Cancela la conversación"""
-        # Limpiar datos
         context.user_data.clear()
 
         cancel_message = """
@@ -368,22 +350,20 @@ Todos los datos han sido descartados.
 /cancel - Cancelar la consulta actual
 
 🔄 **Flujo de consulta:**
-1. 🏪 Ingresa el local (ej: kfc004)
-2. 📅 Selecciona la fecha
-3. 🔢 Ingresa referencia (opcional)
-4. ✅ Ingresa autorización (opcional)
+1. 🏪 Local (siempre)
+2. 📅 Fecha (siempre) 
+3. ✅ Autorización (si tienes)
+4. 🔢 Referencia (solo si no tienes autorización)
 
 📊 **Sistema de Reportes:**
 - Genera reportes CSV con todas las conexiones
 - Estadísticas por local y fecha
-- Datos de consultas realizadas
 
 🔧 **Soporte:** Si tienes problemas, contacta al administrador.
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
-    # ========== MÉTODOS DE REPORTES ==========
-
+    # ... (Los métodos de reportes se mantienen igual)
     async def reportes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Maneja el comando /reportes"""
         print(f"🔍 Comando /reportes recibido de usuario: {update.effective_user.id}")
